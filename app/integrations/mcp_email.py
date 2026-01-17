@@ -5,7 +5,7 @@ Higher-level wrapper around MCP client for email operations.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 
 from .mcp_client import MCPClient, MCPClientError
@@ -24,7 +24,7 @@ class EmailClient:
     def fetch_new_emails(
         self,
         mailbox: Optional[str] = None,
-        since_minutes: int = 60,
+        since_days: int = 7,
         max_emails: int = 50
     ) -> List[Dict[str, Any]]:
         """
@@ -32,7 +32,7 @@ class EmailClient:
 
         Args:
             mailbox: Email address of mailbox (uses default if not specified)
-            since_minutes: Only fetch emails from the last N minutes
+            since_days: Only fetch emails from the last N days
             max_emails: Maximum number of emails to fetch
 
         Returns:
@@ -41,14 +41,19 @@ class EmailClient:
         mailbox = mailbox or settings.mailbox_email
 
         try:
+            # Calculate date filter for last N days
+            since_date = datetime.utcnow() - timedelta(days=since_days)
+            filter_query = f"receivedDateTime ge {since_date.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+
             # Fetch recent emails from inbox
             messages = self.mcp.list_mail_messages(
                 mailbox=mailbox,
                 folder="inbox",
-                top=max_emails
+                top=max_emails,
+                filter_query=filter_query
             )
 
-            logger.info(f"Fetched {len(messages)} emails from {mailbox}")
+            logger.info(f"Fetched {len(messages)} emails from last {since_days} days from {mailbox}")
             return messages
 
         except MCPClientError as e:

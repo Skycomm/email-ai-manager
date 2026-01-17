@@ -186,42 +186,98 @@ class TeamsClient:
         limit: int = 50
     ) -> List[Dict[str, Any]]:
         """
-        Get recent replies from Teams channel/chat.
+        Get recent replies from Teams channel/chat, including thread replies.
 
         Args:
             since_message_id: Only get messages after this ID
             limit: Maximum messages to fetch
 
         Returns:
-            List of message dictionaries
+            List of message dictionaries (includes both top-level and thread replies)
         """
+        all_messages = []
         try:
             if self._channel_id:
                 if not self._team_id:
                     self._discover_team_id()
 
+                # If we still don't have a team ID, can't fetch messages
+                if not self._team_id:
+                    logger.warning("No team ID available for channel")
+                    return []
+
+                # Get top-level messages
                 messages = self.mcp.list_channel_messages(
                     team_id=self._team_id,
                     channel_id=self._channel_id,
                     top=limit
                 )
+
+                # Also fetch thread replies for recent messages
+                for msg in messages[:10]:  # Check threads on last 10 messages
+                    if not msg:
+                        continue
+                    msg_id = msg.get("id")
+                    if msg_id:
+                        # Add the parent message
+                        all_messages.append(msg)
+                        # Fetch thread replies
+                        try:
+                            replies = self._get_thread_replies(msg_id)
+                            for reply in replies:
+                                if reply:
+                                    # Tag with parent message ID for context
+                                    reply["_parent_message_id"] = msg_id
+                                    all_messages.append(reply)
+                        except Exception as e:
+                            logger.debug(f"Could not fetch replies for {msg_id}: {e}")
+
             elif self._chat_id:
                 messages = self.mcp.list_chat_messages(
                     chat_id=self._chat_id,
                     top=limit
                 )
+                all_messages = messages
             else:
                 return []
 
-            return messages
+            return all_messages
 
         except MCPClientError as e:
             logger.error(f"Failed to get Teams replies: {e}")
             return []
 
+    def _get_thread_replies(self, parent_message_id: str) -> List[Dict[str, Any]]:
+        """Fetch replies to a specific message thread."""
+        try:
+            result = self.mcp.call_tool("list-channel-message-replies", {
+                "team_id": self._team_id,
+                "channel_id": self._channel_id,
+                "message_id": parent_message_id
+            })
+            if result is None:
+                logger.debug(f"No thread replies for message {parent_message_id}")
+                return []
+            if isinstance(result, list):
+                replies = [r for r in result if r is not None]
+                if replies:
+                    logger.info(f"Found {len(replies)} thread replies for message {parent_message_id}")
+                return replies
+            replies = result.get("replies", result.get("value", []))
+            if replies is None:
+                return []
+            filtered_replies = [r for r in replies if r is not None]
+            if filtered_replies:
+                logger.info(f"Found {len(filtered_replies)} thread replies for message {parent_message_id}")
+            return filtered_replies
+        except Exception as e:
+            logger.warning(f"Failed to get thread replies for {parent_message_id}: {e}")
+            return []
+
     def parse_command(self, message_text: str) -> Tuple[CommandType, Optional[str]]:
         """
         Parse a user command from a Teams message.
+        Supports both exact commands and conversational phrases.
 
         Args:
             message_text: The raw message text
@@ -232,16 +288,16 @@ class TeamsClient:
         text = message_text.strip().lower()
 
         # Direct commands
-        if text in ["approve", "send", "yes", "y"]:
+        if text in ["approve", "send", "yes", "y", "ok", "looks good", "send it"]:
             return CommandType.APPROVE, None
 
-        if text in ["ignore", "skip", "no", "n"]:
+        if text in ["ignore", "skip", "no", "n", "pass", "not now", "later"]:
             return CommandType.IGNORE, None
 
-        if text == "rewrite":
+        if text in ["rewrite", "try again", "redo"]:
             return CommandType.REWRITE, None
 
-        if text == "more":
+        if text in ["more", "show more", "full email", "details"]:
             return CommandType.MORE, None
 
         if text == "spam":
@@ -249,6 +305,18 @@ class TeamsClient:
 
         if text in ["done", "delete"]:
             return CommandType.DELETE, None
+
+        # Spam batch commands
+        if text in ["dismiss all", "dismiss_all", "archive all", "clear spam"]:
+            return CommandType.DISMISS_ALL, None
+
+        if text == "review":
+            return CommandType.REVIEW, None
+
+        # Keep command with parameter (index or keyword)
+        keep_match = re.match(r"^keep\s+(.+)$", text, re.IGNORECASE)
+        if keep_match:
+            return CommandType.KEEP, keep_match.group(1).strip()
 
         # Token-based approval (6-char hex)
         if re.match(r"^[a-f0-9]{6}$", text):
@@ -263,6 +331,41 @@ class TeamsClient:
         forward_match = re.match(r"^forward\s+(?:to\s+)?(.+)$", text, re.IGNORECASE)
         if forward_match:
             return CommandType.FORWARD, forward_match.group(1).strip()
+
+        # Conversational spam/junk detection
+        spam_phrases = [
+            "junk", "is junk", "all junk", "this is junk",
+            "is spam", "this is spam", "mark as spam",
+            "trash", "garbage", "delete this", "not interested",
+            "unsubscribe", "stop sending", "don't want this"
+        ]
+        for phrase in spam_phrases:
+            if phrase in text:
+                return CommandType.SPAM, None
+
+        # Conversational ignore detection
+        ignore_phrases = [
+            "don't need to reply", "no reply needed", "no action",
+            "not important", "can ignore", "skip this",
+            "doesn't need", "don't care",
+            # Notification-related (user doesn't want alerts for this type)
+            "don't need to be notified", "dont need to be notified",
+            "don't notify", "dont notify", "no notification",
+            "stop notifying", "don't alert", "dont alert",
+            "don't need notification", "dont need notification"
+        ]
+        for phrase in ignore_phrases:
+            if phrase in text:
+                return CommandType.IGNORE, None
+
+        # Conversational approval
+        approve_phrases = [
+            "looks good", "send that", "go ahead", "that works",
+            "perfect", "good to go", "ship it"
+        ]
+        for phrase in approve_phrases:
+            if phrase in text:
+                return CommandType.APPROVE, None
 
         return CommandType.UNKNOWN, message_text
 

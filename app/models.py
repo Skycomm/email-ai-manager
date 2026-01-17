@@ -61,6 +61,10 @@ class CommandType(Enum):
     FORWARD = "forward"
     DELETE = "delete"
     SPAM = "spam"
+    # Spam batch commands
+    DISMISS_ALL = "dismiss_all"
+    REVIEW = "review"
+    KEEP = "keep"
     UNKNOWN = "unknown"
 
 
@@ -155,7 +159,9 @@ class EmailRecord:
             EmailState.AWAITING_APPROVAL: [
                 EmailState.APPROVED,
                 EmailState.DRAFT_GENERATED,  # Re-edit
-                EmailState.IGNORED
+                EmailState.IGNORED,
+                EmailState.SPAM_DETECTED,  # User marks as spam
+                EmailState.ARCHIVED  # User dismisses
             ],
             EmailState.APPROVED: [EmailState.SENT, EmailState.ERROR],
             EmailState.FORWARD_SUGGESTED: [EmailState.FORWARDED, EmailState.IGNORED],

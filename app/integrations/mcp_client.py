@@ -102,23 +102,31 @@ class MCPClient:
                 raise MCPClientError(f"Tool {tool_name} failed: {error_msg}")
 
             # Extract the actual content from the response
-            content = result.get("result", {}).get("content", [])
+            result_obj = result.get("result", {})
+            if result_obj is None:
+                return {}
+            content = result_obj.get("content", [])
             if content and len(content) > 0:
-                text_content = content[0].get("text", "{}")
+                first_content = content[0]
+                if first_content is None:
+                    return {}
+                text_content = first_content.get("text", "{}")
                 try:
-                    return json.loads(text_content)
+                    parsed = json.loads(text_content)
+                    return parsed if parsed is not None else {}
                 except json.JSONDecodeError:
                     # Some MCP responses have text prefix before JSON
                     # Try to extract JSON from the text
                     if "{" in text_content:
                         json_start = text_content.find("{")
                         try:
-                            return json.loads(text_content[json_start:])
+                            parsed = json.loads(text_content[json_start:])
+                            return parsed if parsed is not None else {}
                         except json.JSONDecodeError:
                             pass
                     return {"text": text_content}
 
-            return result.get("result", {})
+            return result_obj if result_obj is not None else {}
 
         except httpx.HTTPStatusError as e:
             logger.error(f"MCP tool call failed: {tool_name} - {e}")
@@ -228,6 +236,22 @@ class MCPClient:
 
         return self.call_tool("reply-mail", params)
 
+    def move_mail_message(
+        self,
+        message_id: str,
+        destination_folder_id: str,
+        sender_email: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Move an email to a different folder."""
+        params = {
+            "message_id": message_id,
+            "destination_folder_id": destination_folder_id
+        }
+        if sender_email:
+            params["sender_email"] = sender_email
+
+        return self.call_tool("move-mail-message", params)
+
     # Teams operations
     def list_joined_teams(self) -> List[Dict[str, Any]]:
         """List Teams the user has joined."""
@@ -270,9 +294,14 @@ class MCPClient:
             "channel_id": channel_id,
             "top": top
         })
+        if result is None:
+            return []
         if isinstance(result, list):
-            return result
-        return result.get("messages", result.get("value", []))
+            return [m for m in result if m is not None]
+        messages = result.get("messages", result.get("value", []))
+        if messages is None:
+            return []
+        return [m for m in messages if m is not None]
 
     def list_chats(self, top: int = 20) -> List[Dict[str, Any]]:
         """List Teams chats."""

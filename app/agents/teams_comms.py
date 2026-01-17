@@ -138,6 +138,9 @@ class TeamsCommsAgent(BaseAgent):
         """
         commands = []
 
+        # Spam batch commands don't require an email
+        SPAM_BATCH_COMMANDS = [CommandType.DISMISS_ALL, CommandType.REVIEW, CommandType.KEEP]
+
         try:
             # Get recent messages
             messages = self.teams.get_recent_replies(limit=50)
@@ -165,7 +168,23 @@ class TeamsCommsAgent(BaseAgent):
                 if command_type == CommandType.UNKNOWN:
                     continue
 
-                # Find associated email
+                # Spam batch commands don't need an email
+                if command_type in SPAM_BATCH_COMMANDS:
+                    commands.append({
+                        "email": None,
+                        "command_type": command_type.value,
+                        "parameter": parameter,
+                        "message_id": msg_id
+                    })
+                    self.log_action(
+                        "spam_batch_command_received",
+                        user_command=command_type.value,
+                        details={"parameter": parameter}
+                    )
+                    self._processed_message_ids.add(msg_id)
+                    continue
+
+                # Find associated email for regular commands
                 email = self._find_email_for_command(message, parameter)
 
                 if email:

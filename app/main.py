@@ -109,8 +109,9 @@ class EmailManager:
                 f"Poll cycle complete: "
                 f"{summary['new_emails']} new, "
                 f"{summary['processed']} processed, "
-                f"{summary['drafts_generated']} drafts, "
-                f"{summary['notifications_sent']} notifications, "
+                f"{summary.get('action_required', 0)} action, "
+                f"{summary.get('spam_detected', 0)} spam, "
+                f"{summary.get('fyi', 0)} fyi, "
                 f"{summary['errors']} errors"
             )
 
