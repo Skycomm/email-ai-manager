@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  email-ai-manager:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: email-ai-manager
+    restart: unless-stopped
+
+    environment:
+      # Required - set these in .env file or override
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - MAILBOX_EMAIL=${MAILBOX_EMAIL}
+
+      # MCP Server connection
+      - MS365_MCP_URL=${MS365_MCP_URL:-http://host.docker.internal:3000}
+
+      # Teams configuration
+      - TEAMS_CHANNEL_ID=${TEAMS_CHANNEL_ID:-}
+      - TEAMS_CHAT_ID=${TEAMS_CHAT_ID:-}
+
+      # Polling and behavior
+      - POLL_INTERVAL_SECONDS=${POLL_INTERVAL_SECONDS:-60}
+      - AUTO_SEND_ENABLED=${AUTO_SEND_ENABLED:-false}
+      - MAX_EMAILS_PER_HOUR=${MAX_EMAILS_PER_HOUR:-20}
+
+      # Database
+      - DB_PATH=/data/email_manager.db
+      - ENCRYPT_EMAIL_BODIES=${ENCRYPT_EMAIL_BODIES:-true}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FILE=/data/logs/email_manager.log
+
+      # Agent model
+      - AGENT_MODEL=${AGENT_MODEL:-claude-sonnet-4-20250514}
+
+    volumes:
+      # Persistent data storage
+      - email_ai_data:/data
+
+      # Optional: mount logs to host for easy access
+      - ./logs:/data/logs
+
+    # Allow access to host network for MCP server
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    # Optional: expose dashboard port (Phase 3)
+    # ports:
+    #   - "8080:8080"
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sqlite3; sqlite3.connect('/data/email_manager.db').execute('SELECT 1')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  email_ai_data:
+    driver: local

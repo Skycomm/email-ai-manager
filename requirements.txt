@@ -1,0 +1,27 @@
+# Email AI Manager Dependencies
+
+# Anthropic SDK for Claude
+anthropic>=0.39.0
+
+# HTTP client for MCP server communication
+httpx>=0.27.0
+
+# Settings management
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Async support
+anyio>=4.0.0
+
+# Cryptography for email body encryption (optional)
+cryptography>=41.0.0
+
+# FastAPI for dashboard (Phase 3)
+# fastapi>=0.109.0
+# uvicorn>=0.27.0
+
+# Development dependencies (uncomment for dev)
+# pytest>=8.0.0
+# pytest-asyncio>=0.23.0
+# black>=24.0.0
+# ruff>=0.1.0
