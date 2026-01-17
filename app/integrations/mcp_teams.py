@@ -23,7 +23,7 @@ class TeamsClient:
         self.mcp = mcp_client or MCPClient()
         self._channel_id = settings.teams_channel_id
         self._chat_id = settings.teams_chat_id
-        self._team_id: Optional[str] = None
+        self._team_id: Optional[str] = getattr(settings, 'teams_team_id', None)
 
     def send_notification(
         self,

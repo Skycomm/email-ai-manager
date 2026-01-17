@@ -16,8 +16,12 @@ class Settings(BaseSettings):
 
     # MCP Server Settings
     ms365_mcp_url: str = Field(
-        default="http://localhost:3000",
+        default="http://localhost:10001",
         description="URL of the MS365 MCP server"
+    )
+    ms365_mcp_bearer_token: Optional[str] = Field(
+        default=None,
+        description="Bearer token for MCP server authentication"
     )
 
     # Email Settings
@@ -35,6 +39,10 @@ class Settings(BaseSettings):
     )
 
     # Teams Settings
+    teams_team_id: Optional[str] = Field(
+        default=None,
+        description="Teams team ID for notifications"
+    )
     teams_channel_id: Optional[str] = Field(
         default=None,
         description="Teams channel ID for notifications"

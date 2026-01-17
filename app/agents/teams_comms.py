@@ -143,6 +143,8 @@ class TeamsCommsAgent(BaseAgent):
             messages = self.teams.get_recent_replies(limit=50)
 
             for message in messages:
+                if not message or not isinstance(message, dict):
+                    continue
                 msg_id = message.get("id", "")
 
                 # Skip already processed
