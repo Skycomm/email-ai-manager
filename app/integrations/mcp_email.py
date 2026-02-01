@@ -25,7 +25,7 @@ class EmailClient:
         self,
         mailbox: Optional[str] = None,
         since_days: int = 7,
-        max_emails: int = 50
+        max_emails: int = 100
     ) -> List[Dict[str, Any]]:
         """
         Fetch new emails from the mailbox.
@@ -33,7 +33,7 @@ class EmailClient:
         Args:
             mailbox: Email address of mailbox (uses default if not specified)
             since_days: Only fetch emails from the last N days
-            max_emails: Maximum number of emails to fetch
+            max_emails: Maximum number of emails to fetch per folder
 
         Returns:
             List of email message dictionaries
@@ -45,16 +45,50 @@ class EmailClient:
             since_date = datetime.utcnow() - timedelta(days=since_days)
             filter_query = f"receivedDateTime ge {since_date.strftime('%Y-%m-%dT%H:%M:%SZ')}"
 
-            # Fetch recent emails from inbox
-            messages = self.mcp.list_mail_messages(
-                mailbox=mailbox,
-                folder="inbox",
-                top=max_emails,
-                filter_query=filter_query
-            )
+            all_messages = []
 
-            logger.info(f"Fetched {len(messages)} emails from last {since_days} days from {mailbox}")
-            return messages
+            # Folders to exclude from processing (spam, junk, system folders)
+            excluded_folders = {
+                "junk email", "junkemail", "junk", "spam",
+                "deleted items", "deleteditems",
+                "archive", "drafts", "outbox", "sent items", "sentitems",
+                "conversation history", "conversation calllogs", "clutter"
+            }
+
+            # Get all folders and check each one (except excluded)
+            try:
+                folders = self.mcp.list_mail_folders(mailbox)
+                folders_to_check = [
+                    f["displayName"] for f in folders
+                    if f["displayName"].lower() not in excluded_folders
+                ]
+                logger.info(f"Will check folders: {folders_to_check}")
+            except Exception as e:
+                logger.warning(f"Could not list folders, falling back to inbox only: {e}")
+                folders_to_check = ["Inbox"]
+
+            for folder in folders_to_check:
+                try:
+                    # Fetch emails sorted by received time descending (newest first)
+                    # This ensures we always see the most recent emails even if there are many
+                    messages = self.mcp.list_mail_messages(
+                        mailbox=mailbox,
+                        folder=folder,
+                        top=max_emails,
+                        filter_query=filter_query,
+                        orderby="receivedDateTime desc"
+                    )
+                    # Tag messages with their source folder
+                    for msg in messages:
+                        msg['_source_folder'] = folder
+                    all_messages.extend(messages)
+                    if messages:
+                        logger.info(f"Fetched {len(messages)} emails from {folder} folder")
+                except Exception as e:
+                    logger.warning(f"Could not fetch from {folder} folder: {e}")
+
+            logger.info(f"Fetched {len(all_messages)} total emails from last {since_days} days from {mailbox}")
+            return all_messages
 
         except MCPClientError as e:
             logger.error(f"Failed to fetch emails: {e}")
@@ -185,7 +219,7 @@ class EmailClient:
         mailbox: Optional[str] = None
     ) -> bool:
         """
-        Move an email to archive.
+        Move an email to archive folder.
 
         Args:
             message_id: MS365 message ID
@@ -194,10 +228,19 @@ class EmailClient:
         Returns:
             True if archived successfully
         """
-        # This would use the move-mail-message MCP tool
-        # Implementation depends on MCP server capabilities
-        logger.info(f"Archive email {message_id} (not yet implemented)")
-        return True
+        mailbox = mailbox or settings.mailbox_email
+
+        try:
+            self.mcp.move_mail_message(
+                message_id=message_id,
+                destination_folder_id="archive",
+                sender_email=mailbox
+            )
+            logger.info(f"Archived email {message_id}")
+            return True
+        except MCPClientError as e:
+            logger.error(f"Failed to archive email {message_id}: {e}")
+            return False
 
     def delete_email(
         self,
@@ -205,7 +248,7 @@ class EmailClient:
         mailbox: Optional[str] = None
     ) -> bool:
         """
-        Delete an email.
+        Move an email to deleted items folder.
 
         Args:
             message_id: MS365 message ID
@@ -214,9 +257,119 @@ class EmailClient:
         Returns:
             True if deleted successfully
         """
-        # This would use the delete-mail-message MCP tool
-        logger.info(f"Delete email {message_id} (not yet implemented)")
-        return True
+        mailbox = mailbox or settings.mailbox_email
+
+        try:
+            self.mcp.move_mail_message(
+                message_id=message_id,
+                destination_folder_id="DeletedItems",
+                sender_email=mailbox
+            )
+            logger.info(f"Deleted email {message_id}")
+            return True
+        except MCPClientError as e:
+            logger.error(f"Failed to delete email {message_id}: {e}")
+            return False
+
+    def move_to_folder(
+        self,
+        message_id: str,
+        folder_name: str,
+        mailbox: Optional[str] = None
+    ) -> bool:
+        """
+        Move an email to a specified folder by name.
+
+        Args:
+            message_id: MS365 message ID
+            folder_name: Destination folder name (can be path like "Inbox/Billing")
+            mailbox: Mailbox email address
+
+        Returns:
+            True if moved successfully
+        """
+        mailbox = mailbox or settings.mailbox_email
+
+        try:
+            # Resolve the folder name to an ID
+            folder_id = self._resolve_folder_id(folder_name, mailbox)
+
+            if not folder_id:
+                logger.error(f"Could not find folder: {folder_name}")
+                return False
+
+            self.mcp.move_mail_message(
+                message_id=message_id,
+                destination_folder_id=folder_id,
+                sender_email=mailbox
+            )
+            logger.info(f"Moved email {message_id} to folder {folder_name}")
+            return True
+        except MCPClientError as e:
+            logger.error(f"Failed to move email {message_id} to {folder_name}: {e}")
+            return False
+
+    def _resolve_folder_id(
+        self,
+        folder_name: str,
+        mailbox: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Resolve a folder name (or path) to its MS365 folder ID.
+
+        Args:
+            folder_name: Folder name or path (e.g., "Billing" or "Inbox/Billing")
+            mailbox: Mailbox email address
+
+        Returns:
+            Folder ID if found, None otherwise
+        """
+        try:
+            # Split the path into parts
+            path_parts = folder_name.split("/")
+
+            # Get top-level folders
+            folders = self.mcp.list_mail_folders(mailbox)
+
+            # Find the first part of the path
+            current_folder = None
+            for folder in folders:
+                if folder.get("displayName", "").lower() == path_parts[0].lower():
+                    current_folder = folder
+                    break
+
+            if not current_folder:
+                logger.warning(f"Could not find top-level folder: {path_parts[0]}")
+                return None
+
+            # If there's only one part, return this folder's ID
+            if len(path_parts) == 1:
+                return current_folder.get("id")
+
+            # Navigate through the path
+            for part in path_parts[1:]:
+                # Get children of current folder
+                children = self.mcp.list_child_mail_folders(
+                    folder_id=current_folder.get("id"),
+                    mailbox=mailbox
+                )
+
+                found = False
+                for child in children:
+                    if child.get("displayName", "").lower() == part.lower():
+                        current_folder = child
+                        found = True
+                        break
+
+                if not found:
+                    logger.warning(f"Could not find subfolder: {part}")
+                    return None
+
+            return current_folder.get("id")
+
+        except Exception as e:
+            logger.error(f"Error resolving folder ID for {folder_name}: {e}")
+            return None
 
     def parse_email_to_record(
         self,

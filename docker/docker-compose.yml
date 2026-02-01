@@ -13,6 +13,8 @@ services:
       # Override database path for container
       - DB_PATH=/data/email_manager.db
       - LOG_FILE=/data/logs/email_manager.log
+      # Dashboard settings
+      - DASHBOARD_PORT=8080
 
     volumes:
       # Persistent data storage
@@ -21,12 +23,19 @@ services:
       # Optional: mount logs to host for easy access
       - ./logs:/data/logs
 
-    # Use host network for direct access to MCP server
-    network_mode: host
+      # Mount dashboard for live updates during development
+      - ../dashboard:/app/dashboard
 
-    # Optional: expose dashboard port (Phase 3)
-    # ports:
-    #   - "8080:8080"
+      # Mount app for live updates during development
+      - ../app:/app/app
+
+    # Port mappings
+    ports:
+      - "8080:8080"  # Dashboard
+
+    # Add host.docker.internal for macOS to access host services
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
     healthcheck:
       test: ["CMD", "python", "-c", "import sqlite3; sqlite3.connect('/data/email_manager.db').execute('SELECT 1')"]

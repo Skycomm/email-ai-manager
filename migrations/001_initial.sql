@@ -51,6 +51,11 @@ CREATE TABLE IF NOT EXISTS emails (
     error_message TEXT,
     retry_count INTEGER DEFAULT 0,
 
+    -- Phase 4 columns
+    is_vip INTEGER DEFAULT 0,
+    is_auto_sent INTEGER DEFAULT 0,
+    response_time_minutes INTEGER,
+
     -- Ensure unique message per mailbox
     UNIQUE(message_id, mailbox)
 );
@@ -109,6 +114,21 @@ CREATE TABLE IF NOT EXISTS digest_entries (
     digest_date TEXT NOT NULL,  -- YYYY-MM-DD
     included INTEGER DEFAULT 0,
     FOREIGN KEY (email_id) REFERENCES emails(id)
+);
+
+-- Muted senders (senders that won't trigger Teams notifications)
+CREATE TABLE IF NOT EXISTS muted_senders (
+    id TEXT PRIMARY KEY,
+    email_pattern TEXT UNIQUE NOT NULL,  -- email address or domain
+    muted_at TEXT NOT NULL,
+    reason TEXT
+);
+
+-- Application settings
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TEXT NOT NULL
 );
 
 -- Indexes for common queries

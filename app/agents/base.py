@@ -5,10 +5,11 @@ Uses the Claude Agent SDK pattern with tool definitions and
 structured outputs.
 """
 
+import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import anthropic
 
@@ -103,8 +104,6 @@ class BaseAgent(ABC):
         Returns:
             Parsed JSON response
         """
-        import json
-
         # Add schema instruction to messages
         schema_instruction = f"""
         Respond with valid JSON matching this schema:

@@ -17,8 +17,8 @@ anyio>=4.0.0
 cryptography>=41.0.0
 
 # FastAPI for dashboard (Phase 3)
-# fastapi>=0.109.0
-# uvicorn>=0.27.0
+fastapi>=0.109.0
+uvicorn>=0.27.0
 
 # Development dependencies (uncomment for dev)
 # pytest>=8.0.0

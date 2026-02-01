@@ -157,7 +157,8 @@ class MCPClient:
         mailbox: Optional[str] = None,
         folder: str = "inbox",
         top: int = 10,
-        filter_query: Optional[str] = None
+        filter_query: Optional[str] = None,
+        orderby: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """List email messages from a mailbox."""
         params = {
@@ -168,6 +169,8 @@ class MCPClient:
             params["sender_email"] = mailbox
         if filter_query:
             params["filter"] = filter_query
+        if orderby:
+            params["orderby"] = orderby
 
         result = self.call_tool("list-mail-messages", params)
 
@@ -251,6 +254,104 @@ class MCPClient:
             params["sender_email"] = sender_email
 
         return self.call_tool("move-mail-message", params)
+
+    def list_mail_folders(
+        self,
+        mailbox: Optional[str] = None,
+        top: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        List mail folders in a mailbox.
+
+        Args:
+            mailbox: Email address of the mailbox
+            top: Maximum number of folders to return (default 100)
+
+        Returns:
+            List of folder dictionaries with id, displayName, childFolderCount, etc.
+        """
+        params = {"top": top}
+        if mailbox:
+            params["sender_email"] = mailbox
+        result = self.call_tool("list-mail-folders", params)
+
+        if isinstance(result, list):
+            return result
+        return result.get("folders", result.get("value", []))
+
+    def list_child_mail_folders(
+        self,
+        folder_id: str,
+        mailbox: Optional[str] = None,
+        top: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        List child folders (subfolders) of a specific mail folder.
+
+        Args:
+            folder_id: ID of the parent folder
+            mailbox: Email address of the mailbox
+            top: Maximum number of folders to return (default 100)
+
+        Returns:
+            List of child folder dictionaries
+        """
+        params = {"folder_id": folder_id, "top": top}
+        if mailbox:
+            params["sender_email"] = mailbox
+        result = self.call_tool("list-child-mail-folders", params)
+        if isinstance(result, list):
+            return result
+        return result.get("folders", result.get("value", []))
+
+    def list_all_mail_folders_recursive(
+        self,
+        mailbox: Optional[str] = None,
+        max_depth: int = 3
+    ) -> List[Dict[str, Any]]:
+        """
+        List all mail folders recursively, including nested subfolders.
+
+        Args:
+            mailbox: Email address of the mailbox
+            max_depth: Maximum depth to recurse (default 3)
+
+        Returns:
+            List of folders with nested 'children' property for subfolders
+        """
+        def fetch_folders(parent_id: Optional[str], depth: int) -> List[Dict[str, Any]]:
+            if depth > max_depth:
+                return []
+
+            try:
+                if parent_id:
+                    folders = self.list_child_mail_folders(folder_id=parent_id, mailbox=mailbox)
+                else:
+                    folders = self.list_mail_folders(mailbox=mailbox)
+            except Exception as e:
+                logger.warning(f"Could not fetch folders (parent={parent_id}): {e}")
+                return []
+
+            result = []
+            for folder in folders:
+                folder_data = {
+                    "id": folder.get("id"),
+                    "name": folder.get("displayName"),
+                    "total_count": folder.get("totalItemCount", 0),
+                    "unread_count": folder.get("unreadItemCount", 0),
+                    "child_folder_count": folder.get("childFolderCount", 0),
+                    "children": []
+                }
+
+                # Recursively fetch children if this folder has any
+                if folder_data["child_folder_count"] > 0 and depth < max_depth:
+                    folder_data["children"] = fetch_folders(folder_data["id"], depth + 1)
+
+                result.append(folder_data)
+
+            return result
+
+        return fetch_folders(None, 1)
 
     # Teams operations
     def list_joined_teams(self) -> List[Dict[str, Any]]:
@@ -337,12 +438,95 @@ class MCPClient:
             return result
         return result.get("messages", result.get("value", []))
 
-    # Calendar operations (for future use)
+    def list_channel_message_replies(
+        self,
+        team_id: str,
+        channel_id: str,
+        message_id: str,
+        top: int = 20
+    ) -> List[Dict[str, Any]]:
+        """List replies to a Teams channel message."""
+        result = self.call_tool("list-channel-message-replies", {
+            "team_id": team_id,
+            "channel_id": channel_id,
+            "message_id": message_id,
+            "top": top
+        })
+        if result is None:
+            return []
+        if isinstance(result, list):
+            return [m for m in result if m is not None]
+        replies = result.get("replies", result.get("value", []))
+        if replies is None:
+            return []
+        return [m for m in replies if m is not None]
+
+    def list_chat_message_replies(
+        self,
+        chat_id: str,
+        message_id: str,
+        top: int = 20
+    ) -> List[Dict[str, Any]]:
+        """List replies to a Teams chat message (quote replies)."""
+        result = self.call_tool("list-chat-message-replies", {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "top": top
+        })
+        if result is None:
+            return []
+        if isinstance(result, list):
+            return [m for m in result if m is not None]
+        replies = result.get("replies", result.get("value", []))
+        if replies is None:
+            return []
+        return [m for m in replies if m is not None]
+
+    def get_conversation_messages(
+        self,
+        mailbox: str,
+        conversation_id: str,
+        top: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all messages in an email conversation/thread.
+
+        Args:
+            mailbox: Email address of mailbox
+            conversation_id: MS365 conversation ID
+            top: Maximum messages to return
+
+        Returns:
+            List of email messages in the conversation
+        """
+        try:
+            # Filter messages by conversation ID
+            filter_query = f"conversationId eq '{conversation_id}'"
+            params = {
+                "folder": "inbox",
+                "top": top,
+                "filter": filter_query,
+                "orderby": "receivedDateTime desc"
+            }
+            if mailbox:
+                params["sender_email"] = mailbox
+
+            result = self.call_tool("list-mail-messages", params)
+
+            if isinstance(result, list):
+                return result
+            return result.get("messages", result.get("value", []))
+        except MCPClientError as e:
+            logger.warning(f"Could not fetch conversation history: {e}")
+            return []
+
+    # Calendar operations
     def list_calendar_events(
         self,
         start_datetime: Optional[str] = None,
         end_datetime: Optional[str] = None,
-        top: int = 10
+        top: int = 10,
+        organizer_email: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """List calendar events."""
         params = {"top": top}
@@ -350,11 +534,112 @@ class MCPClient:
             params["startDateTime"] = start_datetime
         if end_datetime:
             params["endDateTime"] = end_datetime
+        if organizer_email:
+            params["organizer_email"] = organizer_email
 
         result = self.call_tool("list-calendar-events", params)
         if isinstance(result, list):
             return result
         return result.get("events", result.get("value", []))
+
+    def get_calendar_view(
+        self,
+        start_datetime: str,
+        end_datetime: str,
+        user_email: Optional[str] = None,
+        timezone: str = "Australia/Perth"
+    ) -> List[Dict[str, Any]]:
+        """Get calendar view for a time range."""
+        params = {
+            "start_date_time": start_datetime,
+            "end_date_time": end_datetime,
+            "timezone": timezone
+        }
+        if user_email:
+            params["user_email"] = user_email
+
+        result = self.call_tool("get-calendar-view", params)
+        if isinstance(result, list):
+            return result
+        return result.get("events", result.get("value", []))
+
+    def accept_event_invite(
+        self,
+        event_id: str,
+        comment: Optional[str] = None,
+        user_email: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Accept a meeting invitation."""
+        params = {"event_id": event_id}
+        if comment:
+            params["comment"] = comment
+        if user_email:
+            params["user_email"] = user_email
+        return self.call_tool("accept-event-invite", params)
+
+    def decline_event_invite(
+        self,
+        event_id: str,
+        comment: Optional[str] = None,
+        user_email: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Decline a meeting invitation."""
+        params = {"event_id": event_id}
+        if comment:
+            params["comment"] = comment
+        if user_email:
+            params["user_email"] = user_email
+        return self.call_tool("decline-event-invite", params)
+
+    def tentatively_accept_event_invite(
+        self,
+        event_id: str,
+        comment: Optional[str] = None,
+        user_email: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Tentatively accept a meeting invitation."""
+        params = {"event_id": event_id}
+        if comment:
+            params["comment"] = comment
+        if user_email:
+            params["user_email"] = user_email
+        return self.call_tool("tentatively-accept-event-invite", params)
+
+    def update_chat_message(
+        self,
+        chat_id: str,
+        message_id: str,
+        content: str,
+        content_type: str = "html"
+    ) -> Dict[str, Any]:
+        """Update an existing chat message."""
+        return self.call_tool("update-chat-message", {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "body": {
+                "content": content,
+                "contentType": content_type
+            }
+        })
+
+    def update_channel_message(
+        self,
+        team_id: str,
+        channel_id: str,
+        message_id: str,
+        content: str,
+        content_type: str = "html"
+    ) -> Dict[str, Any]:
+        """Update an existing channel message."""
+        return self.call_tool("update-channel-message", {
+            "team_id": team_id,
+            "channel_id": channel_id,
+            "message_id": message_id,
+            "body": {
+                "content": content,
+                "contentType": content_type
+            }
+        })
 
     def close(self):
         """Close the HTTP client."""

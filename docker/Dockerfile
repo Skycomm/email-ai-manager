@@ -34,6 +34,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy application code
 COPY app/ ./app/
 COPY migrations/ ./migrations/
+COPY dashboard/ ./dashboard/
 
 # Create data directory
 RUN mkdir -p /data && chown -R emailai:emailai /data
@@ -54,6 +55,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Volume for persistent data
 VOLUME ["/data"]
+
+# Expose dashboard port
+EXPOSE 8080
 
 # Run the application
 CMD ["python", "-m", "app.main"]

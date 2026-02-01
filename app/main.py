@@ -7,10 +7,10 @@ through Microsoft Teams.
 """
 
 import asyncio
-import time
 import logging
 import signal
 import sys
+import threading
 from datetime import datetime
 
 from .config import settings
@@ -122,6 +122,34 @@ class EmailManager:
         logger.debug(f"Cycle completed in {cycle_duration:.2f}s")
 
 
+def run_api_server(db: Database, port: int = 8080):
+    """Run the FastAPI server in a separate thread."""
+    try:
+        import uvicorn
+        from .api import create_app, set_db
+
+        # Set the shared database instance
+        set_db(db)
+        app = create_app(db)
+
+        # Run uvicorn with minimal logging
+        config = uvicorn.Config(
+            app,
+            host="0.0.0.0",
+            port=port,
+            log_level="info",
+            access_log=False,
+        )
+        server = uvicorn.Server(config)
+
+        # Create new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(server.serve())
+    except Exception as e:
+        logger.error(f"API server failed: {e}", exc_info=True)
+
+
 def main():
     """Main entry point."""
     manager = EmailManager()
@@ -133,6 +161,16 @@ def main():
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+
+    # Start API server in background thread
+    dashboard_port = getattr(settings, 'dashboard_port', 8080)
+    api_thread = threading.Thread(
+        target=run_api_server,
+        args=(manager.db, dashboard_port),
+        daemon=True,
+    )
+    api_thread.start()
+    logger.info(f"Dashboard API started on http://0.0.0.0:{dashboard_port}")
 
     # Run the async main loop
     try:

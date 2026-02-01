@@ -9,6 +9,7 @@ This agent:
 """
 
 import logging
+import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
@@ -74,6 +75,60 @@ class TeamsCommsAgent(BaseAgent):
 
         return message_id
 
+    def _clean_email_body(self, body: str) -> str:
+        """
+        Clean up email body for display - extract readable text from HTML.
+
+        Args:
+            body: Raw email body (may be HTML)
+
+        Returns:
+            Cleaned text suitable for Teams display
+        """
+        if not body:
+            return "(No content)"
+
+        text = body
+
+        # Remove HTML comments
+        text = re.sub(r'<!--.*?-->', '', text, flags=re.DOTALL)
+
+        # Remove style and script tags entirely
+        text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL | re.IGNORECASE)
+
+        # Replace common block elements with newlines
+        text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'</p>', '\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'</div>', '\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'</tr>', '\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'</li>', '\n', text, flags=re.IGNORECASE)
+
+        # Remove all remaining HTML tags
+        text = re.sub(r'<[^>]+>', '', text)
+
+        # Decode common HTML entities
+        text = text.replace('&nbsp;', ' ')
+        text = text.replace('&amp;', '&')
+        text = text.replace('&lt;', '<')
+        text = text.replace('&gt;', '>')
+        text = text.replace('&quot;', '"')
+        text = text.replace('&#39;', "'")
+
+        # Remove zero-width characters (used for preview hacking)
+        text = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', text)
+
+        # Collapse multiple whitespace/newlines
+        text = re.sub(r'\n\s*\n', '\n\n', text)
+        text = re.sub(r' +', ' ', text)
+
+        # Trim and limit length for Teams
+        text = text.strip()
+        if len(text) > 3000:
+            text = text[:3000] + '\n\n... (truncated)'
+
+        return text
+
     async def send_full_email(self, email: EmailRecord) -> Optional[str]:
         """
         Send the full email content to Teams.
@@ -84,16 +139,17 @@ class TeamsCommsAgent(BaseAgent):
         Returns:
             Teams message ID if sent
         """
-        content = f"""
-        <h4>Full Email Content</h4>
-        <hr>
-        <p><b>From:</b> {email.sender_name or email.sender_email} &lt;{email.sender_email}&gt;</p>
-        <p><b>To:</b> {', '.join(email.to_recipients)}</p>
-        <p><b>Subject:</b> {email.subject}</p>
-        <p><b>Received:</b> {email.received_at.strftime('%Y-%m-%d %H:%M')}</p>
-        <hr>
-        <div>{email.body_full or email.body_preview}</div>
-        """
+        # Clean up the email body for readable display
+        body_content = self._clean_email_body(email.body_full or email.body_preview)
+
+        content = f"""<h4>Full Email Content</h4>
+<hr>
+<p><b>From:</b> {email.sender_name or email.sender_email} &lt;{email.sender_email}&gt;</p>
+<p><b>To:</b> {', '.join(email.to_recipients)}</p>
+<p><b>Subject:</b> {email.subject}</p>
+<p><b>Received:</b> {email.received_at.strftime('%Y-%m-%d %H:%M')}</p>
+<hr>
+<pre style="white-space:pre-wrap;font-family:inherit;">{body_content}</pre>"""
 
         if email.has_attachments:
             content += "<hr><p><i>📎 This email has attachments (not shown)</i></p>"
@@ -138,8 +194,10 @@ class TeamsCommsAgent(BaseAgent):
         """
         commands = []
 
-        # Spam batch commands don't require an email
-        SPAM_BATCH_COMMANDS = [CommandType.DISMISS_ALL, CommandType.REVIEW, CommandType.KEEP]
+        # Commands that don't require an email lookup (handled by coordinator)
+        BATCH_COMMANDS = [CommandType.DISMISS_ALL, CommandType.REVIEW, CommandType.KEEP, CommandType.ARCHIVE_ALL]
+        # Numbered commands (like "more 3", "spam 5", "mute 2") are looked up by coordinator via summary_email_mapping
+        NUMBERED_COMMANDS = [CommandType.MORE, CommandType.SPAM, CommandType.MUTE]
 
         try:
             # Get recent messages
@@ -168,8 +226,8 @@ class TeamsCommsAgent(BaseAgent):
                 if command_type == CommandType.UNKNOWN:
                     continue
 
-                # Spam batch commands don't need an email
-                if command_type in SPAM_BATCH_COMMANDS:
+                # Batch commands don't need an email lookup
+                if command_type in BATCH_COMMANDS:
                     commands.append({
                         "email": None,
                         "command_type": command_type.value,
@@ -177,9 +235,26 @@ class TeamsCommsAgent(BaseAgent):
                         "message_id": msg_id
                     })
                     self.log_action(
-                        "spam_batch_command_received",
+                        "batch_command_received",
                         user_command=command_type.value,
                         details={"parameter": parameter}
+                    )
+                    self._processed_message_ids.add(msg_id)
+                    continue
+
+                # Numbered commands (e.g., "more 3", "spam 5") pass through to coordinator
+                # Coordinator will look up the email via summary_email_mapping
+                if command_type in NUMBERED_COMMANDS and parameter and parameter.isdigit():
+                    commands.append({
+                        "email": None,
+                        "command_type": command_type.value,
+                        "parameter": parameter,
+                        "message_id": msg_id
+                    })
+                    self.log_action(
+                        "numbered_command_received",
+                        user_command=command_type.value,
+                        details={"number": parameter}
                     )
                     self._processed_message_ids.add(msg_id)
                     continue
@@ -285,7 +360,6 @@ class TeamsCommsAgent(BaseAgent):
 
         if content_type == "html":
             # Simple HTML stripping
-            import re
             text = re.sub(r"<[^>]+>", "", content)
             text = text.replace("&nbsp;", " ").replace("&amp;", "&")
             return text.strip()

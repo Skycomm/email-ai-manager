@@ -59,11 +59,35 @@ class Settings(BaseSettings):
         default="08:00",
         description="Time to send daily digest (HH:MM)"
     )
+    teams_morning_summary_hour: int = Field(
+        default=7,
+        description="Hour (0-23) to send morning summary of newsletters/FYI (default 7am)"
+    )
+    timezone: str = Field(
+        default="Australia/Perth",
+        description="Timezone for displaying times (default Australia/Perth, UTC+8)"
+    )
+    fyi_auto_archive_hours: int = Field(
+        default=48,
+        description="Auto-archive FYI/newsletter emails older than this many hours (default 48h)"
+    )
 
     # Safety Settings
     auto_send_enabled: bool = Field(
         default=False,
         description="Allow auto-sending of low-risk emails (Phase 4)"
+    )
+    auto_send_max_priority: int = Field(
+        default=4,
+        description="Only auto-send emails with priority >= this (4-5 = low priority)"
+    )
+    auto_send_internal_only: bool = Field(
+        default=True,
+        description="Only auto-send to internal domains"
+    )
+    auto_send_categories: List[str] = Field(
+        default_factory=lambda: ["fyi"],
+        description="Categories eligible for auto-send (fyi, meeting)"
     )
     max_emails_per_hour: int = Field(
         default=20,
@@ -72,6 +96,34 @@ class Settings(BaseSettings):
     external_domain_require_approval: bool = Field(
         default=True,
         description="Always require approval for external domains"
+    )
+
+    # VIP Settings
+    vip_senders: List[str] = Field(
+        default_factory=list,
+        description="Email addresses that are always high priority"
+    )
+    vip_domains: List[str] = Field(
+        default_factory=list,
+        description="Domains that are always high priority"
+    )
+    internal_domains: List[str] = Field(
+        default_factory=list,
+        description="Internal company domains (for auto-send eligibility)"
+    )
+
+    # Calendar Integration
+    calendar_integration_enabled: bool = Field(
+        default=True,
+        description="Enable calendar integration for meeting emails"
+    )
+    calendar_auto_accept_internal: bool = Field(
+        default=False,
+        description="Auto-accept meeting invites from internal senders"
+    )
+    calendar_check_conflicts: bool = Field(
+        default=True,
+        description="Check for calendar conflicts when suggesting meeting responses"
     )
 
     # Database Settings
@@ -120,6 +172,75 @@ class Settings(BaseSettings):
     max_tokens: int = Field(
         default=4096,
         description="Max tokens for agent responses"
+    )
+
+    # Spam Detection Settings
+    spam_batch_size: int = Field(
+        default=5,
+        description="Number of spam emails to batch before notification"
+    )
+    spam_notification_interval_minutes: int = Field(
+        default=5,
+        description="Interval between spam batch notifications"
+    )
+    spam_auto_archive_threshold: int = Field(
+        default=95,
+        description="Spam score threshold for auto-archive (0-100)"
+    )
+    spam_ask_threshold: int = Field(
+        default=70,
+        description="Spam score threshold to ask user (0-100)"
+    )
+    spam_sender_domains: List[str] = Field(
+        default_factory=list,
+        description="Sender domains to always treat as spam"
+    )
+    spam_subject_patterns: List[str] = Field(
+        default_factory=list,
+        description="Subject patterns to always treat as spam"
+    )
+
+    # Notification Settings
+    email_body_preview_length: int = Field(
+        default=500,
+        description="Length of email body preview"
+    )
+    teams_message_max_length: int = Field(
+        default=3000,
+        description="Max length for Teams messages"
+    )
+
+    # Alert senders - FYI emails from these senders/domains get immediate notification
+    # (with deduplication), while other FYI emails wait for morning summary
+    alert_sender_domains: List[str] = Field(
+        default_factory=lambda: [
+            "meraki.com",
+            "uptimerobot.com",
+            "pagerduty.com",
+            "opsgenie.com",
+            "datadog.com",
+            "pingdom.com",
+            "statuspage.io",
+            "betterstack.com",
+        ],
+        description="Sender domains that trigger immediate FYI notifications (monitoring/alerts)"
+    )
+    alert_subject_patterns: List[str] = Field(
+        default_factory=lambda: [
+            "alert",
+            "down",
+            "offline",
+            "failed",
+            "critical",
+            "warning",
+            "error",
+            "outage",
+            "incident",
+            "vpn",
+            "connection lost",
+            "unreachable",
+        ],
+        description="Subject patterns that trigger immediate FYI notifications"
     )
 
     class Config:

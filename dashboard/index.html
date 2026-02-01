@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email AI Manager</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📧</text></svg>">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <span class="logo-icon">📧</span>
+                    <span class="logo-text">Email AI</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-tab="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">Dashboard</span>
+                </button>
+                <button class="nav-item" data-tab="emails">
+                    <span class="nav-icon">📬</span>
+                    <span class="nav-text">All Emails</span>
+                    <span class="nav-badge" id="nav-badge-total"></span>
+                </button>
+                <button class="nav-item" data-tab="pending">
+                    <span class="nav-icon">⏳</span>
+                    <span class="nav-text">Pending Action</span>
+                    <span class="nav-badge highlight" id="nav-badge-pending"></span>
+                </button>
+                <button class="nav-item" data-tab="analytics">
+                    <span class="nav-icon">📈</span>
+                    <span class="nav-text">Analytics</span>
+                </button>
+                <button class="nav-item" data-tab="audit">
+                    <span class="nav-icon">📋</span>
+                    <span class="nav-text">Audit Log</span>
+                </button>
+                <button class="nav-item" data-tab="rules">
+                    <span class="nav-icon">🛡️</span>
+                    <span class="nav-text">Spam Rules</span>
+                </button>
+                <button class="nav-item" data-tab="email-rules">
+                    <span class="nav-icon">🔀</span>
+                    <span class="nav-text">Email Rules</span>
+                </button>
+                <button class="nav-item" data-tab="folders">
+                    <span class="nav-icon">📁</span>
+                    <span class="nav-text">Folders</span>
+                </button>
+                <button class="nav-item" data-tab="muted">
+                    <span class="nav-icon">🔇</span>
+                    <span class="nav-text">Muted Senders</span>
+                </button>
+                <button class="nav-item" data-tab="settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">Settings</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="bot-status" id="bot-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Checking...</span>
+                </div>
+                <div class="last-sync" id="last-sync">
+                    Last sync: --
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div class="header-left">
+                    <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+                    <h1 id="page-title">Dashboard</h1>
+                </div>
+                <div class="header-right">
+                    <div class="search-box">
+                        <input type="text" id="global-search" placeholder="Search emails... (Ctrl+K)" autocomplete="off">
+                        <span class="search-icon">🔍</span>
+                    </div>
+                    <button class="btn btn-icon" onclick="toggleTheme()" title="Toggle dark mode">
+                        <span id="theme-icon">🌙</span>
+                    </button>
+                    <button class="btn btn-icon" onclick="refreshCurrentTab()" title="Refresh (R)">
+                        <span>🔄</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Tab Contents -->
+            <div class="content-area">
+                <!-- Dashboard Tab -->
+                <section id="dashboard-tab" class="tab-content active">
+                    <div class="dashboard-grid">
+                        <!-- Quick Stats Cards -->
+                        <div class="stat-card clickable" id="stat-total" title="View all emails">
+                            <div class="stat-icon">📬</div>
+                            <div class="stat-info">
+                                <span class="stat-value" id="dash-total">-</span>
+                                <span class="stat-label">Total Today</span>
+                            </div>
+                        </div>
+                        <div class="stat-card highlight clickable" id="stat-pending" title="View pending emails">
+                            <div class="stat-icon">⏳</div>
+                            <div class="stat-info">
+                                <span class="stat-value" id="dash-pending">-</span>
+                                <span class="stat-label">Pending Action</span>
+                            </div>
+                        </div>
+                        <div class="stat-card success clickable" id="stat-sent" title="View sent emails">
+                            <div class="stat-icon">✉️</div>
+                            <div class="stat-info">
+                                <span class="stat-value" id="dash-sent">-</span>
+                                <span class="stat-label">Sent Today</span>
+                            </div>
+                        </div>
+                        <div class="stat-card danger clickable" id="stat-spam" title="View spam emails">
+                            <div class="stat-icon">🗑️</div>
+                            <div class="stat-info">
+                                <span class="stat-value" id="dash-spam">-</span>
+                                <span class="stat-label">Spam Filtered</span>
+                            </div>
+                        </div>
+
+                        <!-- Pending Emails Quick View -->
+                        <div class="dashboard-card wide">
+                            <div class="card-header">
+                                <h3>Pending Actions</h3>
+                                <button class="btn btn-sm" onclick="switchTab('pending')">View All</button>
+                            </div>
+                            <div class="card-content" id="dash-pending-list">
+                                <p class="loading">Loading...</p>
+                            </div>
+                        </div>
+
+                        <!-- Recent Activity -->
+                        <div class="dashboard-card">
+                            <div class="card-header">
+                                <h3>Recent Activity</h3>
+                                <button class="btn btn-sm" onclick="switchTab('audit')">View All</button>
+                            </div>
+                            <div class="card-content" id="dash-activity">
+                                <p class="loading">Loading...</p>
+                            </div>
+                        </div>
+
+                        <!-- Top Senders -->
+                        <div class="dashboard-card">
+                            <div class="card-header">
+                                <h3>Top Senders Today</h3>
+                            </div>
+                            <div class="card-content" id="dash-senders">
+                                <p class="loading">Loading...</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Emails Tab -->
+                <section id="emails-tab" class="tab-content">
+                    <div class="toolbar">
+                        <div class="toolbar-left">
+                            <select id="state-filter" onchange="loadEmails()">
+                                <option value="">All States</option>
+                                <option value="new">New</option>
+                                <option value="processing">Processing</option>
+                                <option value="awaiting_approval">Awaiting Approval</option>
+                                <option value="sent">Sent</option>
+                                <option value="ignored">Ignored</option>
+                                <option value="spam_detected">Spam</option>
+                                <option value="archived">Archived</option>
+                                <option value="fyi_notified">FYI</option>
+                                <option value="acknowledged">Acknowledged</option>
+                            </select>
+                            <select id="category-filter" onchange="loadEmails()">
+                                <option value="">All Categories</option>
+                                <option value="urgent">Urgent</option>
+                                <option value="action_required">Action Required</option>
+                                <option value="fyi">FYI</option>
+                                <option value="meeting">Meeting</option>
+                                <option value="newsletter">Newsletter</option>
+                                <option value="spam_candidate">Spam</option>
+                            </select>
+                        </div>
+                        <div class="toolbar-right">
+                            <div class="bulk-actions" id="bulk-actions" style="display: none;">
+                                <span id="selected-count">0 selected</span>
+                                <button class="btn btn-sm btn-success" onclick="bulkApprove()">Approve</button>
+                                <button class="btn btn-sm btn-outline" onclick="bulkDismiss()" title="Hide from dashboard (keeps in mailbox)">Dismiss</button>
+                                <button class="btn btn-sm btn-warning" onclick="bulkDelete()" title="Delete from mailbox">Delete</button>
+                                <button class="btn btn-sm btn-danger" onclick="bulkSpam()">Spam</button>
+                                <button class="btn btn-sm" onclick="clearSelection()">Clear</button>
+                            </div>
+                            <button class="btn" onclick="loadEmails()">
+                                <span>🔄</span> Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="email-list-container">
+                        <div id="emails-list" class="email-list">
+                            <p class="loading">Loading emails...</p>
+                        </div>
+                    </div>
+                    <div class="pagination">
+                        <button id="prev-page" onclick="prevPage()" disabled>← Previous</button>
+                        <span id="page-info">Page 1</span>
+                        <button id="next-page" onclick="nextPage()">Next →</button>
+                    </div>
+                </section>
+
+                <!-- Pending Tab -->
+                <section id="pending-tab" class="tab-content">
+                    <div class="toolbar">
+                        <div class="toolbar-left">
+                            <h2>Emails Awaiting Your Action</h2>
+                        </div>
+                        <div class="toolbar-right">
+                            <button class="btn" onclick="loadPendingEmails()">
+                                <span>🔄</span> Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div id="pending-list" class="email-list">
+                        <p class="loading">Loading pending emails...</p>
+                    </div>
+                </section>
+
+                <!-- Analytics Tab -->
+                <section id="analytics-tab" class="tab-content">
+                    <div class="toolbar">
+                        <div class="toolbar-left">
+                            <select id="analytics-hours" onchange="loadAnalytics()">
+                                <option value="24">Last 24 hours</option>
+                                <option value="72">Last 3 days</option>
+                                <option value="168" selected>Last 7 days</option>
+                                <option value="720">Last 30 days</option>
+                            </select>
+                        </div>
+                        <div class="toolbar-right">
+                            <button class="btn" onclick="loadAnalytics()">
+                                <span>🔄</span> Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="analytics-grid">
+                        <!-- Summary Cards -->
+                        <div class="analytics-card wide">
+                            <h3>Email Overview</h3>
+                            <div class="summary-stats" id="summary-stats">
+                                <div class="summary-stat">
+                                    <span class="summary-value" id="analytics-total">-</span>
+                                    <span class="summary-label">Total Emails</span>
+                                </div>
+                                <div class="summary-stat">
+                                    <span class="summary-value" id="analytics-auto-sent">-</span>
+                                    <span class="summary-label">Auto-Sent</span>
+                                </div>
+                                <div class="summary-stat">
+                                    <span class="summary-value" id="analytics-vip">-</span>
+                                    <span class="summary-label">VIP Emails</span>
+                                </div>
+                                <div class="summary-stat">
+                                    <span class="summary-value" id="analytics-meetings">-</span>
+                                    <span class="summary-label">Meeting Emails</span>
+                                </div>
+                                <div class="summary-stat">
+                                    <span class="summary-value" id="analytics-avg-response">-</span>
+                                    <span class="summary-label">Avg Response (min)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- By Category -->
+                        <div class="analytics-card">
+                            <h3>By Category</h3>
+                            <div class="chart-container" id="category-chart">
+                                <p class="loading">Loading...</p>
+                            </div>
+                        </div>
+
+                        <!-- By Priority -->
+                        <div class="analytics-card">
+                            <h3>By Priority</h3>
+                            <div class="chart-container" id="priority-chart">
+                                <p class="loading">Loading...</p>
+                            </div>
+                        </div>
+
+                        <!-- By Mailbox -->
+                        <div class="analytics-card">
+                            <h3>By Mailbox</h3>
+                            <div class="chart-container" id="mailbox-chart">
+                                <p class="loading">Loading...</p>
+                            </div>
+                        </div>
+
+                        <!-- Top Senders -->
+                        <div class="analytics-card">
+                            <h3>Top Senders</h3>
+                            <div class="sender-list" id="top-senders">
+                                <p class="loading">Loading...</p>
+                            </div>
+                        </div>
+
+                        <!-- Hourly Distribution -->
+                        <div class="analytics-card wide">
+                            <h3>Hourly Distribution (24h)</h3>
+                            <div class="hourly-chart" id="hourly-chart">
+                                <p class="loading">Loading...</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Audit Log Tab -->
+                <section id="audit-tab" class="tab-content">
+                    <div class="toolbar">
+                        <div class="toolbar-left">
+                            <select id="audit-agent-filter" onchange="loadAuditLog()">
+                                <option value="">All Agents</option>
+                                <option value="coordinator">Coordinator</option>
+                                <option value="drafting">Drafting</option>
+                                <option value="teams_comms">Teams Comms</option>
+                                <option value="spam_filter">Spam Filter</option>
+                                <option value="calendar">Calendar</option>
+                            </select>
+                        </div>
+                        <div class="toolbar-right">
+                            <button class="btn" onclick="loadAuditLog()">
+                                <span>🔄</span> Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div id="audit-list" class="audit-list">
+                        <p class="loading">Loading audit log...</p>
+                    </div>
+                </section>
+
+                <!-- Spam Rules Tab -->
+                <section id="rules-tab" class="tab-content">
+                    <div class="form-card">
+                        <h3>Add Spam Rule</h3>
+                        <div class="form-row">
+                            <select id="rule-type">
+                                <option value="sender">Sender Email</option>
+                                <option value="domain">Domain</option>
+                                <option value="keyword">Keyword</option>
+                                <option value="pattern">Regex Pattern</option>
+                            </select>
+                            <input type="text" id="rule-pattern" placeholder="Pattern to match (e.g., spam@example.com)">
+                            <select id="rule-action">
+                                <option value="archive">Archive</option>
+                                <option value="delete">Delete</option>
+                                <option value="digest">Daily Digest</option>
+                            </select>
+                            <input type="number" id="rule-confidence" value="80" min="0" max="100" title="Confidence %">
+                            <button class="btn btn-primary" onclick="addSpamRule()">Add Rule</button>
+                        </div>
+                    </div>
+                    <div id="rules-list" class="rules-list">
+                        <p class="loading">Loading spam rules...</p>
+                    </div>
+                </section>
+
+                <!-- Email Rules Tab (LLM-based routing) -->
+                <section id="email-rules-tab" class="tab-content">
+                    <div class="form-card">
+                        <h3>Create Email Routing Rule</h3>
+                        <p class="form-help">Use natural language to describe emails that should be routed automatically (e.g., "Invoices from subscription services like iTunes, Netflix")</p>
+                        <div class="email-rule-form">
+                            <div class="form-row">
+                                <input type="text" id="email-rule-name" placeholder="Rule name (e.g., Subscription Invoices)" style="flex: 1;">
+                            </div>
+                            <div class="form-row">
+                                <textarea id="email-rule-prompt" placeholder="Describe which emails this rule should match...&#10;Examples:&#10;• Invoices from subscription services like iTunes, Netflix, Spotify&#10;• Shipping notifications and order confirmations&#10;• Marketing emails from software vendors" rows="3" style="flex: 1; min-height: 80px;"></textarea>
+                            </div>
+                            <div class="form-row">
+                                <select id="email-rule-action" onchange="updateActionValuePlaceholder()">
+                                    <option value="move_to_folder">Move to Folder</option>
+                                    <option value="archive">Archive</option>
+                                    <option value="notify">Custom Notification</option>
+                                    <option value="set_priority">Set Priority</option>
+                                </select>
+                                <div style="flex: 1; display: flex; gap: 4px;">
+                                    <input type="text" id="email-rule-action-value" placeholder="Folder name or value..." style="flex: 1;">
+                                    <button class="btn btn-outline" id="browse-folders-btn" onclick="showFolderBrowser()" title="Browse folders">📁</button>
+                                </div>
+                                <input type="number" id="email-rule-priority" value="50" min="1" max="100" title="Priority (lower = checked first)" style="width: 70px;">
+                                <button class="btn btn-primary" onclick="addEmailRule()">Create Rule</button>
+                            </div>
+                            <div class="form-row" style="margin-top: 10px;">
+                                <button class="btn btn-outline" onclick="testEmailRulePrompt()">🔍 Test Prompt Against Recent Emails</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="email-rule-test-results" class="test-results-card" style="display: none;">
+                        <!-- Test results appear here -->
+                    </div>
+
+                    <div class="toolbar" style="margin-top: 20px;">
+                        <div class="toolbar-left">
+                            <h3>Active Rules</h3>
+                        </div>
+                        <div class="toolbar-right">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                                <input type="checkbox" id="show-inactive-rules" onchange="loadEmailRules()">
+                                Show inactive
+                            </label>
+                            <button class="btn" onclick="loadEmailRules()">
+                                <span>🔄</span> Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div id="email-rules-list" class="rules-list">
+                        <p class="loading">Loading email rules...</p>
+                    </div>
+                </section>
+
+                <!-- Folders Tab -->
+                <section id="folders-tab" class="tab-content">
+                    <div class="folders-browser">
+                        <div class="folders-sidebar" id="folders-tree">
+                            <p class="loading">Loading folders...</p>
+                        </div>
+                        <div class="folders-content">
+                            <div class="folders-header" id="folder-view-header">
+                                <h3>Select a folder to view emails</h3>
+                                <div class="folder-bulk-actions" id="folder-bulk-actions" style="display: none;">
+                                    <span id="folder-selected-count">0 selected</span>
+                                    <button class="btn btn-sm" onclick="selectAllFolderEmails()">Select All</button>
+                                    <button class="btn btn-sm btn-warning" onclick="deleteFolderEmails()">🗑 Delete</button>
+                                    <button class="btn btn-sm" onclick="clearFolderSelection()">Clear</button>
+                                </div>
+                            </div>
+                            <div id="folder-view-list" class="email-list">
+                                <p class="empty-state">Click a folder on the left to view its contents</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Muted Senders Tab -->
+                <section id="muted-tab" class="tab-content">
+                    <div class="form-card">
+                        <h3>Mute a Sender</h3>
+                        <p class="form-help">Muted senders won't appear in Teams notifications. Emails are still processed.</p>
+                        <div class="form-row">
+                            <input type="text" id="mute-pattern" placeholder="Email address or domain (e.g., spam@example.com or example.com)">
+                            <input type="text" id="mute-reason" placeholder="Reason (optional)">
+                            <button class="btn btn-primary" onclick="muteSender()">Mute</button>
+                        </div>
+                    </div>
+                    <div id="muted-list" class="muted-list">
+                        <p class="loading">Loading muted senders...</p>
+                    </div>
+                </section>
+
+                <!-- Settings Tab -->
+                <section id="settings-tab" class="tab-content">
+                    <div class="settings-grid">
+                        <div class="settings-card">
+                            <h3>📧 Email Settings</h3>
+                            <div class="setting-row">
+                                <label>Poll Interval (seconds)</label>
+                                <input type="number" id="setting-poll-interval" value="60" min="10" max="300">
+                            </div>
+                            <div class="setting-row">
+                                <label>Primary Mailbox</label>
+                                <input type="text" id="setting-mailbox" readonly>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3>📱 Teams Notifications</h3>
+                            <div class="setting-row">
+                                <label>Morning Summary Hour</label>
+                                <select id="setting-morning-hour">
+                                    <option value="6">6:00 AM</option>
+                                    <option value="7">7:00 AM</option>
+                                    <option value="8">8:00 AM</option>
+                                    <option value="9">9:00 AM</option>
+                                </select>
+                            </div>
+                            <div class="setting-row">
+                                <label>
+                                    <input type="checkbox" id="setting-notify-urgent" checked>
+                                    Immediate notification for urgent emails
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3>🛡️ Safety Settings</h3>
+                            <div class="setting-row">
+                                <label>
+                                    <input type="checkbox" id="setting-auto-send" disabled>
+                                    Enable auto-send for low-risk emails
+                                </label>
+                                <span class="setting-note">Coming in Phase 4</span>
+                            </div>
+                            <div class="setting-row">
+                                <label>Max Emails Per Hour</label>
+                                <input type="number" id="setting-max-emails" value="20" min="1" max="100">
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3>🔌 Integrations</h3>
+                            <div class="setting-row">
+                                <label>MS365 MCP Server</label>
+                                <div class="connection-status" id="mcp-status">
+                                    <span class="status-dot"></span>
+                                    <span>Checking...</span>
+                                </div>
+                            </div>
+                            <div class="setting-row">
+                                <label>Teams Channel</label>
+                                <span id="teams-channel-status">--</span>
+                            </div>
+                        </div>
+
+                        <div class="settings-card wide">
+                            <h3>ℹ️ System Information</h3>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <span class="info-label">Version</span>
+                                    <span class="info-value">1.0.0</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Database</span>
+                                    <span class="info-value" id="db-path">/data/email_manager.db</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">AI Model</span>
+                                    <span class="info-value" id="ai-model">claude-sonnet-4-20250514</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Uptime</span>
+                                    <span class="info-value" id="uptime">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Email Detail Modal -->
+    <div id="email-modal" class="modal">
+        <div class="modal-overlay" onclick="closeModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Email Details</h2>
+                <button class="modal-close" onclick="closeModal()">×</button>
+            </div>
+            <div class="modal-body" id="email-detail">
+                <!-- Email details loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- Folder Browser Modal -->
+    <div id="folder-modal" class="modal">
+        <div class="modal-overlay" onclick="closeFolderBrowser()"></div>
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3>Select Folder</h3>
+                <button class="modal-close" onclick="closeFolderBrowser()">×</button>
+            </div>
+            <div class="modal-body" id="folder-list">
+                <p class="loading">Loading folders...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Folder Contents Viewer -->
+    <div id="folder-contents-modal" class="modal">
+        <div class="modal-overlay" onclick="closeFolderContents()"></div>
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3 id="folder-contents-title">Folder Contents</h3>
+                <button class="modal-close" onclick="closeFolderContents()">×</button>
+            </div>
+            <div class="modal-body" id="folder-contents-list">
+                <p class="loading">Loading emails...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Help -->
+    <div id="shortcuts-modal" class="modal">
+        <div class="modal-overlay" onclick="closeShortcutsModal()"></div>
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h2>Keyboard Shortcuts</h2>
+                <button class="modal-close" onclick="closeShortcutsModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="shortcuts-list">
+                    <div class="shortcut-item"><kbd>Ctrl</kbd> + <kbd>K</kbd> <span>Search</span></div>
+                    <div class="shortcut-item"><kbd>R</kbd> <span>Refresh</span></div>
+                    <div class="shortcut-item"><kbd>1</kbd>-<kbd>8</kbd> <span>Switch tabs</span></div>
+                    <div class="shortcut-item"><kbd>Esc</kbd> <span>Close modal</span></div>
+                    <div class="shortcut-item"><kbd>?</kbd> <span>Show shortcuts</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Dialog -->
+    <div id="confirm-modal" class="modal">
+        <div class="modal-overlay" onclick="closeConfirmDialog(false)"></div>
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3 id="confirm-title">Confirm</h3>
+                <button class="modal-close" onclick="closeConfirmDialog(false)">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-message">Are you sure?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeConfirmDialog(false)">Cancel</button>
+                <button id="confirm-action-btn" class="btn btn-danger" onclick="closeConfirmDialog(true)">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Modal -->
+    <div id="progress-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3 id="progress-title">Processing...</h3>
+            </div>
+            <div class="modal-body">
+                <div class="progress-status" id="progress-status">
+                    <div class="progress-spinner"></div>
+                    <p id="progress-message">Starting...</p>
+                </div>
+                <div class="progress-details" id="progress-details"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

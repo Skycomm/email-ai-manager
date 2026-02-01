@@ -88,38 +88,61 @@ class DraftingAgent(BaseAgent):
 
     async def summarize(self, email: EmailRecord) -> str:
         """
-        Generate a concise summary of an email.
+        Generate a concise, actionable summary of an email.
 
         Args:
             email: The email to summarize
 
         Returns:
-            Summary string (2-3 sentences)
+            Summary string explaining what action is needed
         """
         messages = [{
             "role": "user",
-            "content": f"""Summarize this email in 2-3 concise sentences:
+            "content": f"""Summarize this email in a way that helps decide how to respond.
 
 From: {email.sender_name or email.sender_email} <{email.sender_email}>
 Subject: {email.subject}
 
 {email.body_full or email.body_preview}
 
-Focus on:
-- What the sender wants/needs
-- Any action items or deadlines
-- Key information
+Write 1-2 plain text sentences that answer:
+1. What specifically is the sender asking for or telling me?
+2. What action do they need me to take (if any)?
 
-Be direct and factual."""
+IMPORTANT: Write in plain text only. NO markdown, NO asterisks, NO formatting.
+Start directly with the sender's name or what they want. Be specific - use actual names, dates, amounts from the email."""
         }]
 
         try:
-            summary = self.call_claude(messages, max_tokens=200, temperature=0.3)
+            summary = self.call_claude(messages, max_tokens=250, temperature=0.3)
             return summary.strip()
         except Exception as e:
             logger.error(f"Summarization failed: {e}")
             # Fallback to body preview
             return email.body_preview[:300]
+
+    async def generate_summary_only(self, email: EmailRecord) -> Dict[str, Any]:
+        """
+        Generate only a summary for FYI emails (no draft needed).
+
+        Args:
+            email: The email to summarize
+
+        Returns:
+            Dict with summary
+        """
+        summary = await self.summarize(email)
+
+        self.log_action(
+            "summary_generated",
+            email_id=email.id,
+            details={
+                "summary_length": len(summary),
+                "type": "fyi_only"
+            }
+        )
+
+        return {"summary": summary}
 
     async def generate_draft(
         self,
@@ -147,6 +170,17 @@ Be direct and factual."""
             DraftMode.DETAILED: "Write a comprehensive response addressing all points raised."
         }
 
+        # Include thread context if available
+        thread_section = ""
+        if email.thread_context:
+            thread_section = f"""
+Thread History (for context, do not repeat):
+{email.thread_context}
+
+---
+
+"""
+
         messages = [{
             "role": "user",
             "content": f"""Generate a reply to this email:
@@ -155,7 +189,7 @@ From: {email.sender_name or email.sender_email} <{email.sender_email}>
 Subject: {email.subject}
 
 Summary: {summary}
-
+{thread_section}
 Full Content:
 {email.body_full or email.body_preview}
 
